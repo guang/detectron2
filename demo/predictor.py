@@ -5,6 +5,10 @@ import multiprocessing as mp
 from collections import deque
 import cv2
 import torch
+import requests
+from datetime import datetime, timezone
+import socket
+import json
 
 from detectron2.data import MetadataCatalog
 from detectron2.engine.defaults import DefaultPredictor
@@ -88,6 +92,7 @@ class VisualizationDemo(object):
 
         def process_predictions(frame, predictions):
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            send_data_to_qarth(predictions)
             if "panoptic_seg" in predictions:
                 panoptic_seg, segments_info = predictions["panoptic_seg"]
                 vis_frame = video_visualizer.draw_panoptic_seg_predictions(
@@ -218,3 +223,24 @@ class AsyncPredictor:
     @property
     def default_buffer_size(self):
         return len(self.procs) * 5
+
+
+def send_data_to_qarth(predictions):
+    num_preds = len(predictions['instances'].get('pred_boxes'))
+    now = datetime.now(timezone.utc).isoformat()
+    payload = [{
+        "measurement": "personDetector",
+        "tags": {
+            "model_id": "retinanet-r50",
+            "device_id": socket.gethostname()
+        },
+        "time": now,
+        "fields": {
+            "detect_cnt_tot": num_preds
+        }
+    }]
+    # import pdb; pdb.set_trace()
+    r = requests.post("http://localhost:5000/events", data=json.dumps(payload))
+    assert r.status_code == 200, f'uh oh shit didnt work, status was {r.status_code}'
+    print('Data sent!')
+
